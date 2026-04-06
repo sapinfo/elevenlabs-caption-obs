@@ -1,0 +1,9 @@
+{
+  "git.scanRepositories": ["."],
+  "git.repositoryScanIgnoredFolders": [
+    "build_macos",
+    "build_x64",
+    "build_x86_64",
+    ".deps"
+  ]
+}
