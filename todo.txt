@@ -1,0 +1,5 @@
+1. Elevenlabs Scribe v2 realtime transcription 용 OBS plugin
+2. Documents 폴더에 SonioxCaptionplugin 소스참조할것.
+3. Elevenlabs Scribe v2 realtime transcription 는 이미 Documents 폴더에 ELSTTv2에서 잘 작동하는걸 만들어놓았음
+4. 기술문서, Claude.md, 메모리 업데이트할것.
+5. Git적용
