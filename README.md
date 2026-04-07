@@ -39,16 +39,16 @@ ElevenLabs Scribe v2 API를 사용한 OBS Studio **실시간 음성 자막** 플
 
 | 플랫폼 | 파일 |
 |--------|------|
-| macOS (Apple Silicon) | `elevenlabs-caption-obs-v0.1.0-macos-arm64.zip` |
-| Windows | `elevenlabs-caption-obs-0.1.0-windows-x64.zip` |
-| Linux (Ubuntu) | `elevenlabs-caption-obs-0.1.0-x86_64-linux-gnu.deb` |
+| macOS (Apple Silicon) | `elevenlabs-caption-obs-v0.1.1-macos-arm64.zip` |
+| Windows | `elevenlabs-caption-obs-0.1.1-windows-x64.zip` |
+| Linux (Ubuntu) | `elevenlabs-caption-obs-0.1.1-x86_64-linux-gnu.deb` |
 
 ### 3. 설치
 
 <details>
 <summary><b>macOS</b></summary>
 
-1. `elevenlabs-caption-obs-v0.1.0-macos-arm64.zip` 다운로드 후 압축 해제
+1. `elevenlabs-caption-obs-v0.1.1-macos-arm64.zip` 다운로드 후 압축 해제
 2. OBS 메뉴 → **File** → **Show Settings Folder** 클릭
 3. 열린 폴더에서 **plugins** 폴더로 이동
 4. `elevenlabs-caption-obs.plugin` 을 **plugins** 폴더에 복사
@@ -60,7 +60,7 @@ ElevenLabs Scribe v2 API를 사용한 OBS Studio **실시간 음성 자막** 플
 <details>
 <summary><b>Windows</b></summary>
 
-1. `elevenlabs-caption-obs-0.1.0-windows-x64.zip` 다운로드 후 압축 해제
+1. `elevenlabs-caption-obs-0.1.1-windows-x64.zip` 다운로드 후 압축 해제
 2. 내용물을 아래 경로로 복사:
    ```
    %APPDATA%\obs-studio\plugins\elevenlabs-caption-obs\
@@ -72,7 +72,7 @@ ElevenLabs Scribe v2 API를 사용한 OBS Studio **실시간 음성 자막** 플
 <summary><b>Linux (Ubuntu)</b></summary>
 
 ```bash
-sudo dpkg -i elevenlabs-caption-obs-0.1.0-x86_64-linux-gnu.deb
+sudo dpkg -i elevenlabs-caption-obs-0.1.1-x86_64-linux-gnu.deb
 ```
 
 또는 수동으로 `~/.config/obs-studio/plugins/elevenlabs-caption-obs/` 에 복사

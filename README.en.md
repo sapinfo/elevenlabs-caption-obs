@@ -39,16 +39,16 @@ Sign up at [elevenlabs.io](https://elevenlabs.io) and get your API key.
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | `elevenlabs-caption-obs-v0.1.0-macos-arm64.zip` |
-| Windows | `elevenlabs-caption-obs-0.1.0-windows-x64.zip` |
-| Linux (Ubuntu) | `elevenlabs-caption-obs-0.1.0-x86_64-linux-gnu.deb` |
+| macOS (Apple Silicon) | `elevenlabs-caption-obs-v0.1.1-macos-arm64.zip` |
+| Windows | `elevenlabs-caption-obs-0.1.1-windows-x64.zip` |
+| Linux (Ubuntu) | `elevenlabs-caption-obs-0.1.1-x86_64-linux-gnu.deb` |
 
 ### 3. Install
 
 <details>
 <summary><b>macOS</b></summary>
 
-1. Download and unzip `elevenlabs-caption-obs-v0.1.0-macos-arm64.zip`
+1. Download and unzip `elevenlabs-caption-obs-v0.1.1-macos-arm64.zip`
 2. In OBS, go to **File** → **Show Settings Folder**
 3. Open the **plugins** folder
 4. Copy `elevenlabs-caption-obs.plugin` into the **plugins** folder
@@ -60,7 +60,7 @@ Sign up at [elevenlabs.io](https://elevenlabs.io) and get your API key.
 <details>
 <summary><b>Windows</b></summary>
 
-1. Download and unzip `elevenlabs-caption-obs-0.1.0-windows-x64.zip`
+1. Download and unzip `elevenlabs-caption-obs-0.1.1-windows-x64.zip`
 2. Copy contents to:
    ```
    %APPDATA%\obs-studio\plugins\elevenlabs-caption-obs\
@@ -72,7 +72,7 @@ Sign up at [elevenlabs.io](https://elevenlabs.io) and get your API key.
 <summary><b>Linux (Ubuntu)</b></summary>
 
 ```bash
-sudo dpkg -i elevenlabs-caption-obs-0.1.0-x86_64-linux-gnu.deb
+sudo dpkg -i elevenlabs-caption-obs-0.1.1-x86_64-linux-gnu.deb
 ```
 
 Or manually copy to `~/.config/obs-studio/plugins/elevenlabs-caption-obs/`

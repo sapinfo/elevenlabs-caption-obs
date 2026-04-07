@@ -38,7 +38,7 @@
     },
     "name": "elevenlabs-caption-obs",
     "displayName": "ElevenLabs Captions for OBS",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "author": "inseokko",
     "website": "https://github.com/inseokko/elevenlabs-caption-obs",
     "email": "inseokko@example.com"
