@@ -17,8 +17,8 @@ add_library(${CMAKE_PROJECT_NAME} MODULE)
 # --- External libraries: WebSocket + JSON ---
 include(FetchContent)
 
-# macOS: Homebrew OpenSSL path
-if(APPLE)
+# macOS: Homebrew OpenSSL path (skip if already set by CMake preset)
+if(APPLE AND NOT DEFINED CACHE{OPENSSL_ROOT_DIR})
   execute_process(
     COMMAND brew --prefix openssl
     OUTPUT_VARIABLE OPENSSL_ROOT_DIR
