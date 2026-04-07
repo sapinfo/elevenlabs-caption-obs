@@ -167,3 +167,17 @@ ElevenlabsCaptionPlugin/
 3. **VAD commit_strategy**: 자동 음성 구간 감지로 수동 commit 불필요
 4. **번역 제거**: ElevenLabs Scribe v2에 내장 번역 없음 → 필요 시 DeepL API 별도 연동
 5. **Base64 인코딩**: ElevenLabs가 JSON+base64 요구 → `base64_encode()` 인라인 구현
+6. **버튼 텍스트 토글**: `obs_property_set_description()`을 콜백 내에서 직접 호출. `return true`는 `RefreshProperties()`만 트리거하므로 `get_properties()` 재호출 없이 description 변경 반영
+
+## Changelog
+
+### 0.1.2 (2026-04-07)
+- Fix: Start/Stop 버튼 텍스트가 클릭 후 토글되지 않던 문제 수정
+  - `on_start_stop_clicked` 콜백에서 `obs_property_set_description()` 호출 추가
+
+### 0.1.1
+- Fix: Intel Mac (x86_64) 빌드 지원
+- CI/CD: 태그 트리거 + 멀티플랫폼 빌드 + draft 릴리스 자동화
+
+### 0.1.0
+- Initial release: ElevenLabs Scribe v2 기반 실시간 자막 플러그인
