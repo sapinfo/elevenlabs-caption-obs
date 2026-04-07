@@ -13,9 +13,21 @@ OBS Studio 플러그인 - ElevenLabs Scribe v2를 이용한 실시간 음성 자
 ## Build
 
 ```bash
+# macOS (arm64)
 cmake --preset macos
 cmake --build build_macos --config RelWithDebInfo
+
+# macOS (x86_64) - Intel Homebrew OpenSSL 필요
+cmake --preset macos-ci-x86_64
+cmake --build build_macos --config RelWithDebInfo
 ```
+
+## CI/CD
+
+- **트리거**: 태그 push만 (main push 시 Actions 안 함)
+- **빌드**: macOS arm64 + x86_64, Windows x64, Ubuntu x86_64
+- **릴리스**: 태그 push → 자동 빌드 → draft 릴리스 생성
+- **x86_64 주의**: CMake preset이 OPENSSL_ROOT_DIR 설정 시 brew --prefix 건너뜀
 
 ## Architecture
 
@@ -29,8 +41,12 @@ SonioxCaptionPlugin 구조 기반, Soniox → ElevenLabs 교체:
 ## Key Files
 
 - `src/plugin-main.cpp` - 전체 플러그인 코드
-- `CMakeLists.txt` - 빌드 설정
-- `buildspec.json` - 플러그인 메타데이터
+- `CMakeLists.txt` - 빌드 설정 (OpenSSL preset 분기 포함)
+- `CMakePresets.json` - 플랫폼별 프리셋 (macos-ci, macos-ci-x86_64 등)
+- `buildspec.json` - 플러그인 메타데이터 + 버전
+- `.github/workflows/push.yaml` - CI/CD (태그 트리거 + 릴리스)
+- `.github/workflows/build-project.yaml` - 멀티플랫폼 빌드
+- `.github/scripts/build-macos` - macOS 빌드 스크립트 (--arch 지원)
 - `docs/technical-guide.md` - 상세 기술 문서
 
 ## Reference Projects

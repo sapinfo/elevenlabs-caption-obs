@@ -105,6 +105,35 @@ cmake --build build_macos --config RelWithDebInfo
 # 결과: build_macos/RelWithDebInfo/elevenlabs-caption-obs.plugin
 ```
 
+## CI/CD (GitHub Actions)
+
+### 트리거
+- **태그 push만** 트리거 (main 브랜치 push 시 Actions 실행 안 함)
+- 태그 형식: `0.1.1`, `0.1.1-beta1`, `0.1.1-rc1`
+
+### 빌드 매트릭스
+| 플랫폼 | 타겟 | Runner |
+|--------|------|--------|
+| macOS (Apple Silicon) | `macos-arm64` | macos-15 |
+| macOS (Intel) | `macos-x86_64` | macos-15 (cross-compile) |
+| Windows | `x64` | windows-2022 |
+| Ubuntu | `x86_64` | ubuntu-24.04 |
+
+### Intel Mac (x86_64) 빌드 참고사항
+- macos-15 runner(ARM64)에서 x86_64 크로스 컴파일
+- Intel Homebrew (`/usr/local/bin/brew`)로 x86_64 OpenSSL 별도 설치
+- CMake preset `macos-ci-x86_64`에서 `OPENSSL_ROOT_DIR=/usr/local/opt/openssl@3` 설정
+- `CMakeLists.txt`에서 preset이 `OPENSSL_ROOT_DIR`을 이미 설정한 경우 `brew --prefix openssl` 건너뜀
+
+### 릴리스 절차
+```bash
+# 1. buildspec.json 버전 업데이트
+# 2. 태그 생성 및 push
+git tag 0.x.x && git push origin 0.x.x
+# 3. Actions가 빌드 + draft 릴리스 자동 생성
+# 4. gh release edit --draft=false 로 publish
+```
+
 ### OBS에 설치
 
 ```bash
@@ -118,7 +147,7 @@ cp -r build_macos/RelWithDebInfo/elevenlabs-caption-obs.plugin \
 ```
 ElevenlabsCaptionPlugin/
 ├── CMakeLists.txt              # 빌드 설정 (IXWebSocket, nlohmann/json)
-├── CMakePresets.json            # 플랫폼별 프리셋 (macOS/Windows/Linux)
+├── CMakePresets.json            # 플랫폼별 프리셋 (macos-ci, macos-ci-x86_64 등)
 ├── buildspec.json               # 플러그인 메타데이터, OBS SDK 버전
 ├── src/
 │   ├── plugin-main.cpp          # 전체 플러그인 로직 (~500 lines)
