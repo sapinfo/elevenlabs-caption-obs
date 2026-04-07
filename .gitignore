@@ -6,3 +6,4 @@ build_x86_64/
 *.xcodeproj/xcuserdata/
 .bkit/
 .deps/
+.env
