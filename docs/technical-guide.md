@@ -150,7 +150,7 @@ ElevenlabsCaptionPlugin/
 ├── CMakePresets.json            # 플랫폼별 프리셋 (macos-ci, macos-ci-x86_64 등)
 ├── buildspec.json               # 플러그인 메타데이터, OBS SDK 버전
 ├── src/
-│   ├── plugin-main.cpp          # 전체 플러그인 로직 (~500 lines)
+│   ├── plugin-main.cpp          # 전체 플러그인 로직 (~700 lines)
 │   ├── plugin-support.h         # 로깅 헤더
 │   └── plugin-support.c.in      # 로깅 구현 (CMake 생성)
 ├── data/locale/en-US.ini        # i18n
@@ -170,6 +170,13 @@ ElevenlabsCaptionPlugin/
 6. **버튼 텍스트 토글**: `obs_property_set_description()`을 콜백 내에서 직접 호출. `return true`는 `RefreshProperties()`만 트리거하므로 `get_properties()` 재호출 없이 description 변경 반영
 
 ## Changelog
+
+### 0.1.3 (2026-04-10)
+- Feature: 시스템 폰트 피커 (`obs_properties_add_font`) - 기존 드롭다운+슬라이더 대체
+- Feature: 텍스트 색상 (`color1`, `color2`) - Gradient 지원 (macOS/Linux)
+- Feature: 텍스트 효과 (`outline`, `drop_shadow`)
+- Feature: 텍스트 레이아웃 (`custom_width`, `word_wrap`)
+- Improve: 플랫폼별 텍스트 렌더링 (Windows: `text_gdiplus`, macOS/Linux: `text_ft2_source_v2`)
 
 ### 0.1.2 (2026-04-07)
 - Fix: Start/Stop 버튼 텍스트가 클릭 후 토글되지 않던 문제 수정

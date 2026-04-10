@@ -80,12 +80,22 @@ struct elevenlabs_caption_data {
 	// Settings
 	int font_size{48};
 	std::string font_face{"Apple SD Gothic Neo"};
+	std::string font_style{"Regular"};
+	int font_flags{0};
 	std::string api_key;
 	std::string language{"ko"};
 
 	// VAD settings
 	float vad_threshold{0.4f};
 	float vad_silence_secs{0.4f};
+
+	// Text style
+	uint32_t color1{0xFFFFFFFF}; // ABGR (OBS internal format)
+	uint32_t color2{0xFFFFFFFF};
+	bool outline{false};
+	bool drop_shadow{false};
+	int custom_width{0};
+	bool word_wrap{false};
 };
 
 // --- Update text display ---
@@ -97,12 +107,39 @@ static void update_text_display(elevenlabs_caption_data *data, const char *text)
 	obs_data_t *font = obs_data_create();
 	obs_data_set_string(font, "face", data->font_face.c_str());
 	obs_data_set_int(font, "size", data->font_size);
-	obs_data_set_string(font, "style", "Regular");
-	obs_data_set_int(font, "flags", 0);
+	obs_data_set_string(font, "style", data->font_style.c_str());
+	obs_data_set_int(font, "flags", data->font_flags);
 
 	obs_data_t *s = obs_data_create();
 	obs_data_set_string(s, "text", text);
 	obs_data_set_obj(s, "font", font);
+
+#ifdef _WIN32
+	// text_gdiplus properties
+	obs_data_set_int(s, "color", data->color1);
+	obs_data_set_int(s, "opacity", 100);
+	obs_data_set_bool(s, "outline", data->outline);
+	obs_data_set_int(s, "outline_size", 4);
+	obs_data_set_int(s, "outline_color", 0x000000);
+	obs_data_set_int(s, "outline_opacity", 100);
+	if (data->custom_width > 0) {
+		obs_data_set_bool(s, "extents", true);
+		obs_data_set_int(s, "extents_cx", data->custom_width);
+		obs_data_set_int(s, "extents_cy", 0);
+		obs_data_set_bool(s, "extents_wrap", data->word_wrap);
+	} else {
+		obs_data_set_bool(s, "extents", false);
+	}
+#else
+	// text_ft2_source_v2 properties
+	obs_data_set_int(s, "color1", data->color1);
+	obs_data_set_int(s, "color2", data->color2);
+	obs_data_set_bool(s, "outline", data->outline);
+	obs_data_set_bool(s, "drop_shadow", data->drop_shadow);
+	obs_data_set_int(s, "custom_width", data->custom_width);
+	obs_data_set_bool(s, "word_wrap", data->word_wrap);
+#endif
+
 	obs_source_update(data->text_source, s);
 
 	obs_data_release(font);
@@ -447,11 +484,19 @@ static void *elevenlabs_caption_create(obs_data_t *settings, obs_source_t *sourc
 {
 	auto *data = new elevenlabs_caption_data();
 	data->source = source;
-	data->font_size = (int)obs_data_get_int(settings, "font_size");
+
+	// Read font settings
+	obs_data_t *font_obj = obs_data_get_obj(settings, "font");
+	if (font_obj) {
+		data->font_face = obs_data_get_string(font_obj, "face");
+		data->font_style = obs_data_get_string(font_obj, "style");
+		data->font_size = (int)obs_data_get_int(font_obj, "size");
+		data->font_flags = (int)obs_data_get_int(font_obj, "flags");
+		obs_data_release(font_obj);
+	}
 
 	obs_data_t *ts = obs_data_create();
 	obs_data_set_string(ts, "text", "ElevenLabs Captions Ready!");
-	obs_data_set_int(ts, "font_size", data->font_size);
 #ifdef _WIN32
 	data->text_source = obs_source_create_private("text_gdiplus", "elevenlabs_text", ts);
 #else
@@ -481,13 +526,30 @@ static void elevenlabs_caption_destroy(void *private_data)
 static void elevenlabs_caption_update(void *private_data, obs_data_t *settings)
 {
 	auto *data = static_cast<elevenlabs_caption_data *>(private_data);
-	data->font_size = (int)obs_data_get_int(settings, "font_size");
-	data->font_face = obs_data_get_string(settings, "font_face");
+
+	// Font (obs_data_t object)
+	obs_data_t *font_obj = obs_data_get_obj(settings, "font");
+	if (font_obj) {
+		data->font_face = obs_data_get_string(font_obj, "face");
+		data->font_style = obs_data_get_string(font_obj, "style");
+		data->font_size = (int)obs_data_get_int(font_obj, "size");
+		data->font_flags = (int)obs_data_get_int(font_obj, "flags");
+		obs_data_release(font_obj);
+	}
+
 	data->api_key = obs_data_get_string(settings, "api_key");
 	data->language = obs_data_get_string(settings, "language");
 	data->audio_source_name = obs_data_get_string(settings, "audio_source");
 	data->vad_threshold = (float)obs_data_get_double(settings, "vad_threshold");
 	data->vad_silence_secs = (float)obs_data_get_double(settings, "vad_silence_secs");
+
+	// Text style
+	data->color1 = (uint32_t)obs_data_get_int(settings, "color1");
+	data->color2 = (uint32_t)obs_data_get_int(settings, "color2");
+	data->outline = obs_data_get_bool(settings, "outline");
+	data->drop_shadow = obs_data_get_bool(settings, "drop_shadow");
+	data->custom_width = (int)obs_data_get_int(settings, "custom_width");
+	data->word_wrap = obs_data_get_bool(settings, "word_wrap");
 
 	if (!data->captioning && !data->connected) {
 		if (!data->api_key.empty())
@@ -591,24 +653,22 @@ static obs_properties_t *elevenlabs_caption_get_properties(void *private_data)
 	obs_properties_add_float_slider(props, "vad_silence_secs", "Silence Duration (sec)", 0.3,
 					3.0, 0.1);
 
-	// Font selection
-	obs_property_t *font_list =
-		obs_properties_add_list(props, "font_face", "Font", OBS_COMBO_TYPE_LIST,
-					OBS_COMBO_FORMAT_STRING);
-#ifdef _WIN32
-	obs_property_list_add_string(font_list, "Malgun Gothic", "Malgun Gothic");
-	obs_property_list_add_string(font_list, "Yu Gothic", "Yu Gothic");
-#else
-	obs_property_list_add_string(font_list, "Apple SD Gothic Neo", "Apple SD Gothic Neo");
-	obs_property_list_add_string(font_list, "Hiragino Sans", "Hiragino Sans");
-#endif
-	obs_property_list_add_string(font_list, "Noto Sans CJK KR", "Noto Sans CJK KR");
-	obs_property_list_add_string(font_list, "Noto Sans CJK JP", "Noto Sans CJK JP");
-	obs_property_list_add_string(font_list, "Arial", "Arial");
-	obs_property_list_add_string(font_list, "Helvetica", "Helvetica");
+	// --- Text Style ---
 
-	// Font size
-	obs_properties_add_int_slider(props, "font_size", "Font Size", 12, 120, 2);
+	// Font selection (system font dialog)
+	obs_properties_add_font(props, "font", "Font");
+
+	// Text colors
+	obs_properties_add_color(props, "color1", "Text Color");
+	obs_properties_add_color(props, "color2", "Text Color 2 (Gradient)");
+
+	// Text effects
+	obs_properties_add_bool(props, "outline", "Outline");
+	obs_properties_add_bool(props, "drop_shadow", "Drop Shadow");
+
+	// Text layout
+	obs_properties_add_int(props, "custom_width", "Custom Text Width (0=auto)", 0, 4096, 1);
+	obs_properties_add_bool(props, "word_wrap", "Word Wrap");
 
 	// Buttons
 	obs_properties_add_button(props, "test_connection", "Test Connection", on_test_clicked);
@@ -626,12 +686,27 @@ static void elevenlabs_caption_get_defaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, "audio_source", "");
 	obs_data_set_default_double(settings, "vad_threshold", 0.4);
 	obs_data_set_default_double(settings, "vad_silence_secs", 0.4);
+
+	// Font defaults (obs_data_t object)
+	obs_data_t *font_obj = obs_data_create();
 #ifdef _WIN32
-	obs_data_set_default_string(settings, "font_face", "Malgun Gothic");
+	obs_data_set_default_string(font_obj, "face", "Malgun Gothic");
 #else
-	obs_data_set_default_string(settings, "font_face", "Apple SD Gothic Neo");
+	obs_data_set_default_string(font_obj, "face", "Apple SD Gothic Neo");
 #endif
-	obs_data_set_default_int(settings, "font_size", 48);
+	obs_data_set_default_string(font_obj, "style", "Regular");
+	obs_data_set_default_int(font_obj, "size", 48);
+	obs_data_set_default_int(font_obj, "flags", 0);
+	obs_data_set_default_obj(settings, "font", font_obj);
+	obs_data_release(font_obj);
+
+	// Text style defaults
+	obs_data_set_default_int(settings, "color1", 0xFFFFFFFF);
+	obs_data_set_default_int(settings, "color2", 0xFFFFFFFF);
+	obs_data_set_default_bool(settings, "outline", false);
+	obs_data_set_default_bool(settings, "drop_shadow", false);
+	obs_data_set_default_int(settings, "custom_width", 0);
+	obs_data_set_default_bool(settings, "word_wrap", false);
 }
 
 static uint32_t elevenlabs_caption_get_width(void *private_data)
