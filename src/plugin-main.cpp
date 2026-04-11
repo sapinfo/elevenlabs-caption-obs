@@ -625,7 +625,13 @@ static obs_properties_t *elevenlabs_caption_get_properties(void *private_data)
 	obs_properties_t *props = obs_properties_create();
 
 	// API Key
-	obs_properties_add_text(props, "api_key", "ElevenLabs API Key", OBS_TEXT_PASSWORD);
+	obs_property_t *p_api =
+		obs_properties_add_text(props, "api_key", "ElevenLabs API Key", OBS_TEXT_PASSWORD);
+	obs_property_set_long_description(
+		p_api,
+		"Your ElevenLabs API key.\n"
+		"Get one at https://elevenlabs.io → Profile → API Keys.\n"
+		"The free tier includes a monthly Scribe v2 quota; paid plans unlock higher usage.");
 
 	// Audio source selection
 	obs_property_t *audio_list =
@@ -633,6 +639,11 @@ static obs_properties_t *elevenlabs_caption_get_properties(void *private_data)
 					OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(audio_list, "(Select audio source)", "");
 	obs_enum_sources(enum_audio_sources, audio_list);
+	obs_property_set_long_description(
+		audio_list,
+		"OBS audio source to transcribe (microphone, desktop audio, media source, etc.).\n"
+		"The source must be active in your current scene collection.\n"
+		"Audio is resampled to 48 kHz PCM16 and streamed to ElevenLabs over WebSocket.");
 
 	// Language selection (57 languages supported, showing common ones)
 	obs_property_t *lang =
@@ -647,28 +658,91 @@ static obs_properties_t *elevenlabs_caption_get_properties(void *private_data)
 	obs_property_list_add_string(lang, "German", "de");
 	obs_property_list_add_string(lang, "Portuguese", "pt");
 	obs_property_list_add_string(lang, "Russian", "ru");
+	obs_property_set_long_description(
+		lang,
+		"Target language for transcription.\n"
+		"ElevenLabs Scribe v2 supports 57 languages; the list above shows the most common.\n"
+		"Setting the correct language improves accuracy significantly over auto-detection,\n"
+		"especially for short utterances and CJK languages.");
 
 	// VAD settings
-	obs_properties_add_float_slider(props, "vad_threshold", "VAD Threshold", 0.1, 0.9, 0.1);
-	obs_properties_add_float_slider(props, "vad_silence_secs", "Silence Duration (sec)", 0.3,
-					3.0, 0.1);
+	obs_property_t *p_vad_thresh = obs_properties_add_float_slider(
+		props, "vad_threshold", "VAD Threshold", 0.1, 0.9, 0.1);
+	obs_property_set_long_description(
+		p_vad_thresh,
+		"Voice Activity Detection sensitivity (0.1 = sensitive, 0.9 = strict).\n"
+		"Lower values pick up quieter speech but may trigger on background noise.\n"
+		"Higher values only detect clear, loud speech.\n"
+		"\n"
+		"Recommended:\n"
+		"• 0.2-0.3: Quiet room, soft-spoken speakers\n"
+		"• 0.4: General use (default)\n"
+		"• 0.5-0.7: Noisy environment, streaming with background music");
+
+	obs_property_t *p_vad_silence = obs_properties_add_float_slider(
+		props, "vad_silence_secs", "Silence Duration (sec)", 0.3, 3.0, 0.1);
+	obs_property_set_long_description(
+		p_vad_silence,
+		"Silence duration (seconds) before ElevenLabs commits a speech segment\n"
+		"and clears the live partial transcript. Shorter values produce shorter\n"
+		"caption segments; longer values keep text on screen and merge fragments.\n"
+		"\n"
+		"Recommended:\n"
+		"• 0.3-0.5s: Continuous speech (sermons, lectures) — prevents screen overflow\n"
+		"• 0.4s: General conversation (default)\n"
+		"• 1.0-2.0s: Short Q&A or when you want fewer segment breaks\n"
+		"• 2.0-3.0s: Long-form reading, want full sentences to stay visible");
 
 	// --- Text Style ---
 
 	// Font selection (system font dialog)
-	obs_properties_add_font(props, "font", "Font");
+	obs_property_t *p_font = obs_properties_add_font(props, "font", "Font");
+	obs_property_set_long_description(
+		p_font,
+		"System font picker for the caption text.\n"
+		"For CJK languages, choose a font that includes the needed glyphs\n"
+		"(e.g. Apple SD Gothic Neo on macOS, Malgun Gothic on Windows,\n"
+		"Noto Sans CJK on Linux).");
 
 	// Text colors
-	obs_properties_add_color(props, "color1", "Text Color");
-	obs_properties_add_color(props, "color2", "Text Color 2 (Gradient)");
+	obs_property_t *p_color1 = obs_properties_add_color(props, "color1", "Text Color");
+	obs_property_set_long_description(p_color1, "Primary text color for captions.");
+
+	obs_property_t *p_color2 =
+		obs_properties_add_color(props, "color2", "Text Color 2 (Gradient)");
+	obs_property_set_long_description(
+		p_color2,
+		"Secondary color used for a vertical gradient (macOS/Linux FreeType renderer only).\n"
+		"Set to the same value as Text Color for a solid fill.\n"
+		"Ignored on Windows (GDI+ renderer does not support gradients).");
 
 	// Text effects
-	obs_properties_add_bool(props, "outline", "Outline");
-	obs_properties_add_bool(props, "drop_shadow", "Drop Shadow");
+	obs_property_t *p_outline = obs_properties_add_bool(props, "outline", "Outline");
+	obs_property_set_long_description(
+		p_outline,
+		"Draws a black outline around each glyph for readability over busy backgrounds.\n"
+		"Strongly recommended for streaming over gameplay or video footage.");
+
+	obs_property_t *p_shadow = obs_properties_add_bool(props, "drop_shadow", "Drop Shadow");
+	obs_property_set_long_description(
+		p_shadow,
+		"Adds a drop shadow behind the text for extra contrast.\n"
+		"Can be combined with Outline. Windows GDI+ renderer ignores this option.");
 
 	// Text layout
-	obs_properties_add_int(props, "custom_width", "Custom Text Width (0=auto)", 0, 4096, 1);
-	obs_properties_add_bool(props, "word_wrap", "Word Wrap");
+	obs_property_t *p_width = obs_properties_add_int(
+		props, "custom_width", "Custom Text Width (0=auto)", 0, 4096, 1);
+	obs_property_set_long_description(
+		p_width,
+		"Maximum width of the text box in pixels (0 = auto-size to text).\n"
+		"Set to your stream width (e.g. 1920) and enable Word Wrap to keep\n"
+		"long captions from extending off-screen.");
+
+	obs_property_t *p_wrap = obs_properties_add_bool(props, "word_wrap", "Word Wrap");
+	obs_property_set_long_description(
+		p_wrap,
+		"Wraps long caption lines to the next row when they exceed Custom Text Width.\n"
+		"Requires Custom Text Width > 0 to take effect.");
 
 	// Buttons
 	obs_properties_add_button(props, "test_connection", "Test Connection", on_test_clicked);

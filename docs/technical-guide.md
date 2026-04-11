@@ -171,6 +171,16 @@ ElevenlabsCaptionPlugin/
 
 ## Changelog
 
+### 0.1.4 (2026-04-10)
+- UX: 12개 프로퍼티에 툴팁 추가 (`obs_property_set_long_description`)
+  - API Key: 발급 경로 + 무료/유료 플랜 안내
+  - Audio Source: OBS 소스 요구사항 + 48kHz PCM16 WebSocket 송신 설명
+  - Language: 57개 언어 지원, 정확한 언어 설정이 정확도에 미치는 영향
+  - **VAD Threshold**: 0.1~0.9 범위별 추천값 (조용한 방 / 일반 / 시끄러운 환경)
+  - **Silence Duration**: 0.3~3.0초 범위별 추천값 — 설교/강의 같은 연속 발화에서는 **낮은 값**이 자막 누적을 방지한다는 반직관적 동작 명시
+  - Font / Text Color / Color 2 / Outline / Drop Shadow / Custom Width / Word Wrap: 간단 설명 + 플랫폼별 차이 (GDI+ vs FreeType)
+- 참고: DeepgramCaptionPlugin v0.3.0의 툴팁 패턴과 동일한 방식 적용
+
 ### 0.1.3 (2026-04-10)
 - Feature: 시스템 폰트 피커 (`obs_properties_add_font`) - 기존 드롭다운+슬라이더 대체
 - Feature: 텍스트 색상 (`color1`, `color2`) - Gradient 지원 (macOS/Linux)
