@@ -420,6 +420,8 @@ static void test_connection(elevenlabs_caption_data *data)
 			data->connected = true;
 			update_text_display(data, "Connected OK!");
 			obs_log(LOG_INFO, "Test connection: OK");
+			// Close after successful connection test
+			data->websocket->stop();
 			break;
 		case ix::WebSocketMessageType::Message: {
 			try {
@@ -427,10 +429,13 @@ static void test_connection(elevenlabs_caption_data *data)
 				std::string msg_type = resp.value("message_type", "");
 				if (msg_type == "session_started") {
 					update_text_display(data, "Connected! Session ready.");
+					// Close after session confirmed
+					data->websocket->stop();
 				} else if (resp.contains("error")) {
 					update_text_display(
 						data,
 						("Error: " + resp["error"].get<std::string>()).c_str());
+					data->websocket->stop();
 				}
 			} catch (...) {
 			}

@@ -171,6 +171,12 @@ ElevenlabsCaptionPlugin/
 
 ## Changelog
 
+### 0.1.5 (2026-04-12)
+- Fix: Test Connection 성공 후 WebSocket 연결이 닫히지 않던 문제 수정
+  - `Open` 콜백에서 "Connected OK!" 표시 후 `websocket->stop()` 호출
+  - `session_started` 수신 시에도 연결 즉시 종료
+  - 에러 응답 수신 시에도 연결 종료 추가
+
 ### 0.1.4 (2026-04-10)
 - UX: 12개 프로퍼티에 툴팁 추가 (`obs_property_set_long_description`)
   - API Key: 발급 경로 + 무료/유료 플랜 안내
