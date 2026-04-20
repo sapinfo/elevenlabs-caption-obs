@@ -67,6 +67,7 @@ struct elevenlabs_caption_data {
 	std::atomic<bool> connected{false};
 	std::atomic<bool> captioning{false};
 	std::atomic<bool> stopping{false};
+	std::atomic<bool> test_stop_fired{false}; // 한 테스트 세션에서 stop() 단일 보장
 
 	// Audio capture
 	obs_source_t *audio_source{nullptr};
@@ -390,6 +391,22 @@ static void start_captioning(elevenlabs_caption_data *data)
 	obs_log(LOG_INFO, "Caption started, waiting for connection...");
 }
 
+// --- Fire WebSocket stop from a detached thread (test-callback safe) ---
+// The test_connection OnMessage callback runs on the WebSocket's own run()
+// thread; calling ws->stop() there self-joins -> SIGABRT. We dispatch it to
+// a detached std::thread. Additionally, the Elevenlabs test flow has three
+// possible trigger points (Open, session_started, error) that can race, so
+// we gate with an atomic-exchange flag to ensure exactly one stop attempt
+// per test session (two concurrent stop() calls would both try to join the
+// single ws internal run thread; the second join throws system_error).
+static void fire_test_stop(elevenlabs_caption_data *data)
+{
+	if (data->test_stop_fired.exchange(true))
+		return;
+	ix::WebSocket *ws = data->websocket.get();
+	std::thread([ws]() { ws->stop(); }).detach();
+}
+
 // --- Test connection (without audio) ---
 static void test_connection(elevenlabs_caption_data *data)
 {
@@ -406,6 +423,8 @@ static void test_connection(elevenlabs_caption_data *data)
 
 	update_text_display(data, "Testing connection...");
 
+	data->test_stop_fired = false; // reset gate for this test session
+
 	data->websocket = std::make_unique<ix::WebSocket>();
 	data->websocket->setUrl(build_ws_url(data));
 
@@ -421,14 +440,7 @@ static void test_connection(elevenlabs_caption_data *data)
 			data->connected = true;
 			update_text_display(data, "Connected OK!");
 			obs_log(LOG_INFO, "Test connection: OK");
-			// Close after successful connection test.
-			// stop() joins the WebSocket run thread. This callback
-			// runs on that thread; calling stop() inline causes
-			// self-join -> system_error -> terminate -> SIGABRT.
-			// Delegate to a detached thread so the callback returns
-			// first and the run thread exits naturally.
-			ix::WebSocket *ws = data->websocket.get();
-			std::thread([ws]() { ws->stop(); }).detach();
+			fire_test_stop(data);
 			break;
 		}
 		case ix::WebSocketMessageType::Message: {
@@ -437,15 +449,12 @@ static void test_connection(elevenlabs_caption_data *data)
 				std::string msg_type = resp.value("message_type", "");
 				if (msg_type == "session_started") {
 					update_text_display(data, "Connected! Session ready.");
-					// Close after session confirmed (see Open-case note)
-					ix::WebSocket *ws = data->websocket.get();
-					std::thread([ws]() { ws->stop(); }).detach();
+					fire_test_stop(data);
 				} else if (resp.contains("error")) {
 					update_text_display(
 						data,
 						("Error: " + resp["error"].get<std::string>()).c_str());
-					ix::WebSocket *ws = data->websocket.get();
-					std::thread([ws]() { ws->stop(); }).detach();
+					fire_test_stop(data);
 				}
 			} catch (...) {
 			}
