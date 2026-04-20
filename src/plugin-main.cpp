@@ -13,6 +13,7 @@
  */
 
 #include <obs-module.h>
+#include <media-io/audio-resampler.h>
 #include <plugin-support.h>
 
 #include <ixwebsocket/IXWebSocket.h>
@@ -72,6 +73,9 @@ struct elevenlabs_caption_data {
 	// Audio capture
 	obs_source_t *audio_source{nullptr};
 	std::string audio_source_name;
+
+	// Audio resampler (OBS project SR/layout -> 48kHz mono s16le with anti-aliasing)
+	audio_resampler_t *resampler{nullptr};
 
 	// Caption state
 	std::mutex text_mutex;
@@ -149,8 +153,11 @@ static void update_text_display(elevenlabs_caption_data *data, const char *text)
 }
 
 // --- Audio capture callback ---
-// ElevenLabs accepts pcm_48000, so no downsampling needed.
-// Audio is sent as base64-encoded JSON instead of raw binary.
+// ElevenLabs accepts pcm_48000 so target is 48kHz mono. Previously this
+// assumed OBS is always running at 48k and took only the first channel —
+// wrong for projects configured at 44.1/96kHz or for stereo sources.
+// Now uses OBS's audio_resampler to produce 48kHz mono int16 regardless of
+// the project's native SR/layout, with proper anti-aliasing and downmix.
 static void audio_capture_callback(void *param, obs_source_t *, const struct audio_data *audio,
 				   bool muted)
 {
@@ -158,35 +165,28 @@ static void audio_capture_callback(void *param, obs_source_t *, const struct aud
 
 	if (!data->captioning || !data->connected || !data->websocket || muted)
 		return;
-	if (!audio->data[0] || audio->frames == 0)
+	if (!data->resampler || !audio->data[0] || audio->frames == 0)
 		return;
 
-	// OBS: float32, 48000Hz -> ElevenLabs: pcm_s16le, 48000Hz (no downsampling!)
-	const float *src = reinterpret_cast<const float *>(audio->data[0]);
-	uint32_t frames = audio->frames;
+	uint8_t *output[MAX_AV_PLANES] = {0};
+	uint32_t out_frames = 0;
+	uint64_t ts_offset = 0;
+	bool ok = audio_resampler_resample(data->resampler, output, &out_frames, &ts_offset,
+					   reinterpret_cast<const uint8_t *const *>(audio->data),
+					   audio->frames);
+	if (!ok || out_frames == 0 || !output[0])
+		return;
 
-	std::vector<int16_t> pcm16(frames);
-	for (uint32_t i = 0; i < frames; i++) {
-		float sample = src[i];
-		if (sample > 1.0f)
-			sample = 1.0f;
-		if (sample < -1.0f)
-			sample = -1.0f;
-		pcm16[i] = static_cast<int16_t>(sample * 32767.0f);
-	}
+	// output[0] is int16 mono at 48kHz; base64-encode and wrap in JSON
+	std::string b64 = base64_encode(output[0], out_frames * sizeof(int16_t));
 
-	// Base64 encode the PCM data
-	std::string b64 = base64_encode(reinterpret_cast<const uint8_t *>(pcm16.data()),
-					pcm16.size() * sizeof(int16_t));
+	json m;
+	m["message_type"] = "input_audio_chunk";
+	m["audio_base_64"] = b64;
+	m["commit"] = false;
+	m["sample_rate"] = 48000;
 
-	// Send as JSON message
-	json msg;
-	msg["message_type"] = "input_audio_chunk";
-	msg["audio_base_64"] = b64;
-	msg["commit"] = false;
-	msg["sample_rate"] = 48000;
-
-	data->websocket->send(msg.dump());
+	data->websocket->send(m.dump());
 }
 
 // --- Handle ElevenLabs response messages ---
@@ -273,6 +273,11 @@ static void stop_captioning(elevenlabs_caption_data *data)
 		data->audio_source = nullptr;
 	}
 
+	if (data->resampler) {
+		audio_resampler_destroy(data->resampler);
+		data->resampler = nullptr;
+	}
+
 	if (data->websocket) {
 		data->websocket->stop();
 		data->websocket.reset();
@@ -323,6 +328,38 @@ static void start_captioning(elevenlabs_caption_data *data)
 	}
 
 	update_text_display(data, "Connecting...");
+
+	// Create resampler matching OBS project audio -> 48kHz mono s16le with
+	// proper anti-aliasing + downmix. Honors the actual project SR (not
+	// hardcoded 48k like the previous passthrough).
+	struct obs_audio_info oai = {};
+	if (!obs_get_audio_info(&oai)) {
+		oai.samples_per_sec = 48000;
+		oai.speakers = SPEAKERS_STEREO;
+	}
+	struct resample_info src_info = {};
+	src_info.samples_per_sec = oai.samples_per_sec;
+	src_info.format = AUDIO_FORMAT_FLOAT_PLANAR;
+	src_info.speakers = oai.speakers;
+	struct resample_info dst_info = {};
+	dst_info.samples_per_sec = 48000;
+	dst_info.format = AUDIO_FORMAT_16BIT;
+	dst_info.speakers = SPEAKERS_MONO;
+
+	if (data->resampler) {
+		audio_resampler_destroy(data->resampler);
+		data->resampler = nullptr;
+	}
+	data->resampler = audio_resampler_create(&dst_info, &src_info);
+	if (!data->resampler) {
+		obs_log(LOG_ERROR, "Failed to create audio resampler (%u Hz -> 48 kHz)",
+			oai.samples_per_sec);
+		update_text_display(data, "Error: audio resampler init failed");
+		obs_source_release(audio_src);
+		return;
+	}
+	obs_log(LOG_INFO, "Audio resampler: %u Hz (%d ch) -> 48000 Hz mono",
+		oai.samples_per_sec, (int)oai.speakers);
 
 	{
 		std::lock_guard<std::mutex> lock(data->text_mutex);
@@ -476,6 +513,10 @@ static void test_connection(elevenlabs_caption_data *data)
 	data->websocket->start();
 }
 
+// Forward declaration: centralized settings loader (defined after update()).
+// Keeps the 4 read sites (update/hotkey/test-button/start-stop-button) in sync.
+static void load_settings_into_data(elevenlabs_caption_data *data, obs_data_t *settings);
+
 // --- Hotkey: Toggle Start/Stop ---
 static void hotkey_toggle_caption(void *private_data, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 {
@@ -484,11 +525,7 @@ static void hotkey_toggle_caption(void *private_data, obs_hotkey_id, obs_hotkey_
 	auto *data = static_cast<elevenlabs_caption_data *>(private_data);
 
 	obs_data_t *settings = obs_source_get_settings(data->source);
-	data->api_key = obs_data_get_string(settings, "api_key");
-	data->language = obs_data_get_string(settings, "language");
-	data->audio_source_name = obs_data_get_string(settings, "audio_source");
-	data->vad_threshold = (float)obs_data_get_double(settings, "vad_threshold");
-	data->vad_silence_secs = (float)obs_data_get_double(settings, "vad_silence_secs");
+	load_settings_into_data(data, settings);
 	obs_data_release(settings);
 
 	if (data->captioning)
@@ -551,7 +588,20 @@ static void elevenlabs_caption_update(void *private_data, obs_data_t *settings)
 {
 	auto *data = static_cast<elevenlabs_caption_data *>(private_data);
 
-	// Font (obs_data_t object)
+	load_settings_into_data(data, settings);
+
+	if (!data->captioning && !data->connected) {
+		if (!data->api_key.empty())
+			update_text_display(data, "ElevenLabs Captions Ready!");
+		else
+			update_text_display(data, "[Set API Key in Properties]");
+	}
+}
+
+// Centralized settings -> data loader. Used by update(), button callbacks, and hotkey.
+// Any new settings field belongs here (and only here) so all entry points stay in sync.
+static void load_settings_into_data(elevenlabs_caption_data *data, obs_data_t *settings)
+{
 	obs_data_t *font_obj = obs_data_get_obj(settings, "font");
 	if (font_obj) {
 		data->font_face = obs_data_get_string(font_obj, "face");
@@ -567,20 +617,12 @@ static void elevenlabs_caption_update(void *private_data, obs_data_t *settings)
 	data->vad_threshold = (float)obs_data_get_double(settings, "vad_threshold");
 	data->vad_silence_secs = (float)obs_data_get_double(settings, "vad_silence_secs");
 
-	// Text style
 	data->color1 = (uint32_t)obs_data_get_int(settings, "color1");
 	data->color2 = (uint32_t)obs_data_get_int(settings, "color2");
 	data->outline = obs_data_get_bool(settings, "outline");
 	data->drop_shadow = obs_data_get_bool(settings, "drop_shadow");
 	data->custom_width = (int)obs_data_get_int(settings, "custom_width");
 	data->word_wrap = obs_data_get_bool(settings, "word_wrap");
-
-	if (!data->captioning && !data->connected) {
-		if (!data->api_key.empty())
-			update_text_display(data, "ElevenLabs Captions Ready!");
-		else
-			update_text_display(data, "[Set API Key in Properties]");
-	}
 }
 
 // --- Button callbacks ---
@@ -588,10 +630,7 @@ static bool on_test_clicked(obs_properties_t *, obs_property_t *, void *private_
 {
 	auto *data = static_cast<elevenlabs_caption_data *>(private_data);
 	obs_data_t *settings = obs_source_get_settings(data->source);
-	data->api_key = obs_data_get_string(settings, "api_key");
-	data->language = obs_data_get_string(settings, "language");
-	data->vad_threshold = (float)obs_data_get_double(settings, "vad_threshold");
-	data->vad_silence_secs = (float)obs_data_get_double(settings, "vad_silence_secs");
+	load_settings_into_data(data, settings);
 	obs_data_release(settings);
 
 	if (data->connected) {
@@ -612,11 +651,7 @@ static bool on_start_stop_clicked(obs_properties_t *, obs_property_t *property, 
 	auto *data = static_cast<elevenlabs_caption_data *>(private_data);
 
 	obs_data_t *settings = obs_source_get_settings(data->source);
-	data->api_key = obs_data_get_string(settings, "api_key");
-	data->language = obs_data_get_string(settings, "language");
-	data->audio_source_name = obs_data_get_string(settings, "audio_source");
-	data->vad_threshold = (float)obs_data_get_double(settings, "vad_threshold");
-	data->vad_silence_secs = (float)obs_data_get_double(settings, "vad_silence_secs");
+	load_settings_into_data(data, settings);
 	obs_data_release(settings);
 
 	if (data->captioning) {
