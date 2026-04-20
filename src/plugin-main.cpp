@@ -23,6 +23,7 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -416,26 +417,35 @@ static void test_connection(elevenlabs_caption_data *data)
 
 	data->websocket->setOnMessageCallback([data](const ix::WebSocketMessagePtr &msg) {
 		switch (msg->type) {
-		case ix::WebSocketMessageType::Open:
+		case ix::WebSocketMessageType::Open: {
 			data->connected = true;
 			update_text_display(data, "Connected OK!");
 			obs_log(LOG_INFO, "Test connection: OK");
-			// Close after successful connection test
-			data->websocket->stop();
+			// Close after successful connection test.
+			// stop() joins the WebSocket run thread. This callback
+			// runs on that thread; calling stop() inline causes
+			// self-join -> system_error -> terminate -> SIGABRT.
+			// Delegate to a detached thread so the callback returns
+			// first and the run thread exits naturally.
+			ix::WebSocket *ws = data->websocket.get();
+			std::thread([ws]() { ws->stop(); }).detach();
 			break;
+		}
 		case ix::WebSocketMessageType::Message: {
 			try {
 				json resp = json::parse(msg->str);
 				std::string msg_type = resp.value("message_type", "");
 				if (msg_type == "session_started") {
 					update_text_display(data, "Connected! Session ready.");
-					// Close after session confirmed
-					data->websocket->stop();
+					// Close after session confirmed (see Open-case note)
+					ix::WebSocket *ws = data->websocket.get();
+					std::thread([ws]() { ws->stop(); }).detach();
 				} else if (resp.contains("error")) {
 					update_text_display(
 						data,
 						("Error: " + resp["error"].get<std::string>()).c_str());
-					data->websocket->stop();
+					ix::WebSocket *ws = data->websocket.get();
+					std::thread([ws]() { ws->stop(); }).detach();
 				}
 			} catch (...) {
 			}
